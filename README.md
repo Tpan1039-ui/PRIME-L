@@ -105,7 +105,7 @@ Important fields:
 
 ## Data Preparation
 
-PRIME-L uses two data sources:
+PRIME-L uses three data sources:
 
 - LPE1439 experimental data for target fine-tuning and multi-site regression.
 - [VenusFSFP](https://github.com/ai4protein/VenusFSFP)/ProteinGym data for optional auxiliary meta-training.
@@ -144,10 +144,6 @@ data/summaries/round3.csv
 The generated pkl contains the wild-type sequence, alanine-scan records, and the
 measured mutation datasets used by the single-site and multi-site workflows.
 
-Two alanine-scan rows in the provided Excel files, `L124A` and `I435A`, do not
-match the Sheet1 wild-type sequence at their stated residues. PRIME-L preserves
-the original values in `raw_mutant`, uses the actual sequence residues for model
-input (`V124A` and `D435A`), and records the conversion in `coerced_from`.
 
 ### VenusFSFP / ProteinGym Data Preparation
 
@@ -252,7 +248,7 @@ python -m primel.cli finetune-ala \
 ```
 
 `--meta-tasks` retrieves similar ProteinGym tasks from the
-[VenusFSFP](https://github.com/ai4protein/VenusFSFP) pkl.
+[VenusFSFP](https://github.com/ai4protein/VenusFSFP).
 `--gemme-data` adds the GEMME pseudo-fitness task for LPE1439 single mutants,
 matching the recommended three-task auxiliary meta-learning setup.
 
