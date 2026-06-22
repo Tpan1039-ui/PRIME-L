@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 import torch
 
-from .mutations import Mutation, apply_mutations, format_mutations, is_wt_label, parse_mutations
+from .mutations import CANONICAL_AAS, Mutation, apply_mutations, format_mutations, is_wt_label, parse_mutations
 from .utils import atomic_torch_save, ensure_dir
 
 
@@ -151,6 +152,118 @@ def load_proteingym_tasks(path: str | Path, min_size: int = 10) -> list[dict]:
             if len(protein["df"]) >= min_size:
                 tasks.append(add_binary_labels(protein))
     return tasks
+
+
+def read_table(path: str | Path) -> pd.DataFrame:
+    path = Path(path)
+    if path.suffix.lower() in {".xlsx", ".xls"}:
+        return pd.read_excel(path)
+    return pd.read_csv(path, sep=None, engine="python")
+
+
+def _first_existing(columns: Iterable[str], candidates: Iterable[str]) -> str | None:
+    lower_to_original = {str(col).lower(): col for col in columns}
+    for candidate in candidates:
+        if candidate.lower() in lower_to_original:
+            return lower_to_original[candidate.lower()]
+    return None
+
+
+def _score_column_from_table(df: pd.DataFrame) -> str:
+    col = _first_existing(
+        df.columns,
+        ("gemme_score", "GEMME_score", "score", "DMS_score", "fitness", "prediction", "pseudo_fitness"),
+    )
+    if col is not None:
+        return col
+    numeric_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
+    if not numeric_cols:
+        raise ValueError("Could not identify a GEMME score column")
+    return numeric_cols[-1]
+
+
+def _gemme_long_records(df: pd.DataFrame, wild_type: str) -> pd.DataFrame | None:
+    mutant_col = _first_existing(df.columns, ("mutant", "mutation", "mutations", "variant"))
+    if mutant_col is None:
+        return None
+    score_col = _score_column_from_table(df)
+    rows = []
+    for _, row in df.iterrows():
+        muts = parse_mutations(row[mutant_col], wild_type)
+        score = float(row[score_col])
+        rows.append(
+            {
+                "mutant": format_mutations(muts),
+                "raw_mutant": str(row[mutant_col]),
+                "coerced_from": "",
+                "wt_aas": "".join(mut.wt for mut in muts),
+                "mt_aas": "".join(mut.mt for mut in muts),
+                "positions": tuple(mut.pos for mut in muts),
+                "mutated_sequence": apply_mutations(wild_type, muts),
+                "DMS_score": score,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _position_from_column(col) -> int | None:
+    text = str(col)
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if not digits:
+        return None
+    return int(digits) - 1
+
+
+def _gemme_matrix_records(df: pd.DataFrame, wild_type: str) -> pd.DataFrame:
+    first_col = df.columns[0]
+    rows = []
+    for _, row in df.iterrows():
+        mt = str(row[first_col]).strip().upper()
+        if len(mt) != 1 or mt not in CANONICAL_AAS:
+            continue
+        for col in df.columns[1:]:
+            pos = _position_from_column(col)
+            if pos is None or pos < 0 or pos >= len(wild_type):
+                continue
+            score = row[col]
+            if pd.isna(score):
+                continue
+            try:
+                score = float(score)
+            except (TypeError, ValueError):
+                continue
+            wt = wild_type[pos]
+            if mt == wt:
+                continue
+            mut = Mutation(wt, pos, mt)
+            rows.append(
+                {
+                    "mutant": mut.label(),
+                    "raw_mutant": mut.label(),
+                    "coerced_from": "",
+                    "wt_aas": mut.wt,
+                    "mt_aas": mut.mt,
+                    "positions": (mut.pos,),
+                    "mutated_sequence": apply_mutations(wild_type, (mut,)),
+                    "DMS_score": score,
+                }
+            )
+    if not rows:
+        raise ValueError("Could not parse GEMME data as long table or amino-acid matrix")
+    return pd.DataFrame(rows)
+
+
+def load_gemme_task(path: str | Path, wild_type: str, max_records: int | None = None) -> dict:
+    df = read_table(path)
+    records = _gemme_long_records(df, wild_type)
+    if records is None:
+        records = _gemme_matrix_records(df, wild_type)
+    records = records.replace([np.inf, -np.inf], np.nan).dropna(subset=["DMS_score"])
+    records = records.drop_duplicates(subset=["mutant"], keep="last").set_index("mutant", drop=False)
+    if max_records is not None and max_records > 0:
+        records = records.iloc[:max_records].copy()
+    protein = protein_dict("LPE1439_GEMME", wild_type, records)
+    return add_binary_labels(protein)
 
 
 def subset_protein(protein: dict, max_records: int | None = None) -> dict:

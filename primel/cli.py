@@ -14,6 +14,7 @@ from .data import (
     add_binary_labels,
     concatenate_rounds,
     load_lpe_pkl,
+    load_gemme_task,
     load_proteingym_tasks,
     save_study_datasets,
     subset_protein,
@@ -65,7 +66,8 @@ def build_pseudo_task(model, tokenizer, wild_type: str, size: int, batch_size: i
 
 
 def build_meta_tasks(cfg, args, model, tokenizer, lpe_data, device) -> list[dict]:
-    tasks: list[dict] = []
+    protein_gym_tasks: list[dict] = []
+    extra_tasks: list[dict] = []
     if args.meta_tasks > 0:
         pg_path = resolve_path(cfg.get("protein_gym_pkl", "../data/merged.pkl"), repo_root())
         proteingym = load_proteingym_tasks(pg_path)
@@ -78,9 +80,12 @@ def build_meta_tasks(cfg, args, model, tokenizer, lpe_data, device) -> list[dict
             batch_size=args.embed_batch_size,
             device=device,
         )
-        tasks.extend(task for task, _ in selected)
+        protein_gym_tasks.extend(task for task, _ in selected)
+    gemme_path = args.gemme_data or cfg.get("gemme_data")
+    if gemme_path:
+        extra_tasks.append(load_gemme_task(resolve_path(gemme_path, repo_root()), lpe_data["wild_type"], args.max_gemme_records))
     if args.pseudo_task_size > 0:
-        tasks.append(
+        extra_tasks.append(
             build_pseudo_task(
                 model,
                 tokenizer,
@@ -91,7 +96,7 @@ def build_meta_tasks(cfg, args, model, tokenizer, lpe_data, device) -> list[dict
                 args.mask in {"eval", "all"},
             )
         )
-    return [subset_protein(task, args.max_aux_records) for task in tasks]
+    return [subset_protein(task, args.max_aux_records) for task in protein_gym_tasks] + extra_tasks
 
 
 def cmd_prepare(args):
@@ -111,7 +116,10 @@ def cmd_finetune_ala(args):
     set_seed(args.seed)
     device = get_device(args.force_cpu)
     lpe_data = load_or_prepare(cfg, data_path)
-    model, tokenizer = load_model_and_tokenizer(**model_args(cfg), output_hidden_states=args.meta_tasks > 0)
+    model, tokenizer = load_model_and_tokenizer(
+        **model_args(cfg),
+        output_hidden_states=args.meta_tasks > 0 or bool(args.gemme_data or cfg.get("gemme_data")) or args.pseudo_task_size > 0,
+    )
     lora_cfg = cfg.get("lora", {})
     model = apply_lora(
         model,
@@ -343,6 +351,8 @@ def build_parser():
     p.add_argument("--mask", choices=["train", "eval", "all", "none"], default="none")
     p.add_argument("--lora-r", type=int)
     p.add_argument("--meta-tasks", type=int, default=0)
+    p.add_argument("--gemme-data")
+    p.add_argument("--max-gemme-records", type=int)
     p.add_argument("--pseudo-task-size", type=int, default=0)
     p.add_argument("--max-aux-records", type=int, default=512)
     p.add_argument("--meta-train-batch", type=int, default=4)

@@ -1,6 +1,7 @@
 {
   "study_dir": "/home/pan/PhaC_datas/This_study",
   "protein_gym_pkl": "data/merged.pkl",
+  "gemme_data": null,
   "lpe_data_pkl": "data/lpe1439.pkl",
   "model": {
     "name": "AI4Protein/Prime_690M",
