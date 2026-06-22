@@ -1,0 +1,16 @@
+{
+  "study_dir": "/home/pan/PhaC_datas/This_study",
+  "protein_gym_pkl": "data/merged.pkl",
+  "lpe_data_pkl": "data/lpe1439.pkl",
+  "model": {
+    "name": "AI4Protein/Prime_690M",
+    "trust_remote_code": true,
+    "local_files_only": true
+  },
+  "lora": {
+    "r": 16,
+    "alpha": 16,
+    "dropout": 0.1,
+    "target_modules": ["query", "key", "value", "dense"]
+  }
+}

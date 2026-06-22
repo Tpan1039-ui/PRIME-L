@@ -1,0 +1,12 @@
+[project]
+name = "primel"
+version = "0.1.0"
+description = "PRIME-L pipeline for LPE1439 few-shot fine-tuning and mutation design"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["primel*"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
