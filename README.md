@@ -50,6 +50,11 @@ Full PRIME-L fine-tuning and multi-site embedding are GPU workloads. CPU mode is
 available for debugging through `--force-cpu`, but it is not recommended for full
 prediction runs.
 
+The current PRIME-L codebase has been tested on NVIDIA RTX 4090 and NVIDIA A800
+GPUs. With the package versions listed above, the environment installation
+usually completes within about 20 minutes, depending on network speed and package
+cache availability.
+
 ### Installation
 
 From the repository root:
