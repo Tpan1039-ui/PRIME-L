@@ -16,11 +16,12 @@ The code is kept independent from the original
 checkpoints, and prediction tables are written under this repository unless you
 override the paths.
 
-> **Important for user-supplied datasets:** default hyperparameters are only
-> starting points. For any new protein or private fitness dataset, use
-> cross-validation to select suitable values for LoRA rank, learning rate,
-> training epochs, batch size, list size, masking mode, and early-stopping
-> patience before running final prediction.
+> [!IMPORTANT]
+> **Required for custom or user-supplied datasets:** default hyperparameters are
+> starting points only. Before running final single-site or multi-site prediction
+> on any new protein or private fitness dataset, you must use cross-validation
+> to select suitable values for LoRA rank, learning rate, training epochs, batch
+> size, list size, masking mode, and early-stopping patience.
 
 ## Requirements
 
