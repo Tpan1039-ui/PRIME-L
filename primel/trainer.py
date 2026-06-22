@@ -178,7 +178,7 @@ class MetaRankingTrainer(RankingTrainer):
         super().__init__(model, **kwargs)
         if isinstance(model, PeftModel):
             self.adapter_name, adapter = pack_lora_layers(model)
-            self.adapter = MAML(adapter, adapt_lr, first_order=first_order)
+            self.adapter = MAML(adapter, adapt_lr, first_order=first_order, allow_unused=True)
         else:
             self.model = MAML(model, adapt_lr, first_order=first_order, allow_nograd=True)
 
