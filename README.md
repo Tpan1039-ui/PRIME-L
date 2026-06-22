@@ -319,13 +319,15 @@ The output CSV is sorted by PRIME-L score and includes:
 
 ## Multi-Site Mutation Prediction
 
-Multi-site prediction trains a lightweight regression head on PRIME-L encoder
-representations and ranks combinatorial mutation candidates.
+Multi-site prediction performs full fine-tuning of the PRIME-L encoder together
+with the MLP regression head, then ranks combinatorial mutation candidates.
 
-The model converts each mutant sequence into an `L x 1280` PRIME-L hidden
-representation, mean-pools residue embeddings, and feeds the resulting vector to
-an MLP with dropout and `Tanh` output. Training uses MSE loss, 5-fold epoch
-selection, and final training on all available labeled variants.
+During training, each mutant sequence is passed through the PRIME-L encoder to
+produce an `L x 1280` hidden representation. Residue embeddings are mean-pooled
+and passed to an MLP with dropout and `Tanh` output. MSE loss is backpropagated
+through both the regression head and the PRIME-L encoder. The workflow uses
+5-fold epoch selection and then performs final full-model training on all
+available labeled variants.
 
 Example using candidates generated from single-site predictions:
 
@@ -365,6 +367,7 @@ Outputs are written to:
 ```text
 outputs/checkpoints/combo/<run-name>/regression_head.pt
 outputs/checkpoints/combo/<run-name>/regression_head.json
+outputs/checkpoints/combo/<run-name>/encoder/encoder_full_state.pt
 outputs/checkpoints/combo/<run-name>/combo_predictions.csv
 outputs/checkpoints/combo/<run-name>/combo_predictions_topK.csv
 ```
@@ -381,14 +384,14 @@ outputs/checkpoints/combo/<run-name>/combo_predictions_topK.csv
 - `--sites MIN MAX`: minimum and maximum number of sites per generated candidate. Example: `--sites 2 5`.
 - `--max-candidates`: maximum number of generated combination candidates before scoring.
 - `--exclude-known`: how to remove already measured variants from candidates. `seen` excludes variants in the training preset; `all` excludes all bundled measured variants; `none` keeps all generated candidates.
-- `--output-dir`: parent output directory for regression head and prediction CSVs.
+- `--output-dir`: parent output directory for the fine-tuned encoder, regression head, and prediction CSVs.
 - `--run-name`: subdirectory name under `--output-dir`. Use this to name a prediction run.
-- `--embed-batch-size`: sequence batch size for PRIME-L encoder embedding.
-- `--batch-size`: MLP regression-head training batch size.
+- `--embed-batch-size`: sequence batch size used when scoring candidate sequences after full-model training.
+- `--batch-size`: full-model training batch size. The default is `1` because the encoder is trained end to end.
 - `--epochs`: maximum epochs used during fold-level epoch selection.
 - `--folds`: number of folds for estimating the final epoch count.
 - `--patience`: early-stop patience for fold validation MSE.
-- `--learning-rate`: Adam learning rate for the regression head.
+- `--learning-rate`: Adam learning rate for the PRIME-L encoder and regression head.
 - `--hidden-dim`: hidden dimension of the MLP regression head.
 - `--dropout`: dropout probability in the regression head.
 - `--top-k`: also write a `combo_predictions_topK.csv` file.
