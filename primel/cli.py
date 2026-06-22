@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from .combo import fit_cv_then_final, predict_with_head, prediction_table
+from .combo import fit_full_sequence_model_cv_then_final, predict_sequences_with_full_model, prediction_table
 from .config import load_config, repo_root, resolve_path
 from .data import (
     add_binary_labels,
@@ -19,7 +19,7 @@ from .data import (
     save_study_datasets,
     subset_protein,
 )
-from .embedding import embed_sequences, records_from_labels, records_from_protein, select_by_sequence_similarity
+from .embedding import records_from_labels, records_from_protein, select_by_sequence_similarity
 from .fsfp_dataset import MetaRankingSequenceData, RankingSequenceData
 from .mutations import combine_single_mutations, enumerate_single_mutants, unique_single_mutations
 from .plm import apply_lora, count_trainable, load_adapter_model, load_model_and_tokenizer, load_tokenizer
@@ -275,20 +275,26 @@ def cmd_train_combo(args):
     if not candidate_labels:
         raise ValueError("No combination candidates were generated")
 
-    model = load_adapter_model(**model_args(cfg), adapter_dir=resolve_path(args.checkpoint, repo_root()), output_hidden_states=True)
     tokenizer = load_tokenizer(**model_args(cfg))
-    model.to(device)
     train_labels, train_sequences, targets = records_from_protein(train_protein)
-    train_labels, train_embeddings = embed_sequences(model, tokenizer, train_labels, train_sequences, args.embed_batch_size, device)
     candidate_labels, candidate_sequences = records_from_labels(lpe_data["wild_type"], candidate_labels)
-    candidate_labels, candidate_embeddings = embed_sequences(
-        model, tokenizer, candidate_labels, candidate_sequences, args.embed_batch_size, device
-    )
 
     run_name = args.run_name or args.training_preset or f"round{preset_id}"
     out_dir = resolve_path(args.output_dir, repo_root()) / run_name
-    head, metadata = fit_cv_then_final(
-        train_embeddings,
+
+    def model_factory():
+        return load_adapter_model(
+            **model_args(cfg),
+            adapter_dir=resolve_path(args.checkpoint, repo_root()),
+            output_hidden_states=True,
+            trainable=True,
+        )
+
+    model, head, metadata = fit_full_sequence_model_cv_then_final(
+        model_factory,
+        tokenizer,
+        train_labels,
+        train_sequences,
         targets,
         output_dir=out_dir,
         hidden_dim=args.hidden_dim,
@@ -301,7 +307,19 @@ def cmd_train_combo(args):
         seed=args.seed,
         device=device,
     )
-    preds = predict_with_head(head, candidate_embeddings, metadata, device)
+    model.save_pretrained(out_dir / "encoder")
+    torch.save(model.state_dict(), out_dir / "encoder" / "encoder_full_state.pt")
+    tokenizer.save_pretrained(out_dir / "encoder")
+    preds = predict_sequences_with_full_model(
+        model,
+        head,
+        tokenizer,
+        candidate_labels,
+        candidate_sequences,
+        metadata,
+        args.embed_batch_size,
+        device,
+    )
     table = prediction_table(candidate_labels, preds)
     out_csv = out_dir / "combo_predictions.csv"
     table.to_csv(out_csv, index=False)
@@ -390,7 +408,7 @@ def build_parser():
     p.add_argument("--exclude-known", choices=["seen", "all", "none"], default="seen")
     p.add_argument("--output-dir", default="outputs/checkpoints/combo")
     p.add_argument("--embed-batch-size", type=int, default=1)
-    p.add_argument("--batch-size", type=int, default=4)
+    p.add_argument("--batch-size", type=int, default=1)
     p.add_argument("--epochs", type=int, default=200)
     p.add_argument("--folds", type=int, default=5)
     p.add_argument("--patience", type=int, default=10)
